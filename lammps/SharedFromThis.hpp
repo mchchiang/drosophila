@@ -1,6 +1,6 @@
 /* 
  * SharedFromThis.hpp
- * To allow multipel inhiertance of objects inhertigin shared_from_this.
+ * To allow multiple inheritance of objects inheriting shared_from_this.
  */
 
 #ifndef SHAREDFROMTHIS_HPP
