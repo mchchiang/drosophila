@@ -213,7 +213,7 @@ int main(int argc, char * argv[]){
     chrIndex = pickChromo(mt);
     chr = chromoToPick[chrIndex];
     cout << "Generating chromosome " << chrNumToName[chr] << endl;
-    polymer = lammps->createRandomWalkPolymer(chr, fibreLength[chr], 0, 
+    polymer = lammps->createRandomWalkPolymer(chr, fibreLength[chr], 1, 1, 1, 
 					      0.0, 0.0, 0.0, 
 					      lxmin, lymin, lzmin);
 
