@@ -1,0 +1,184 @@
+# Drosophila_equil.lam # For equilibrating the drosophila chromosomes
+
+##################################################
+
+# Variables and definitions
+
+variable btime equal (step*DELTA_T)
+
+##################################################
+
+# Simulation basic definitions
+
+units lj
+atom_style angle
+boundary p p p
+neighbor 1.1 bin
+neigh_modify every 1 delay 1 check yes
+
+#restart RESTART_FREQ RESTART_FILE
+read_data INIT_FILE
+
+##################################################
+
+# Simulation box definition -- repulsive at the boundary
+
+change_box all x final IXLO IXHI y final IYLO IYHI & 
+z final IZLO IZHI  boundary f f f units box
+fix wall all wall/lj126 &
+xlo EDGE 1.0 1.0 1.122462048 &
+xhi EDGE 1.0 1.0 1.122462048 &
+ylo EDGE 1.0 1.0 1.122462048 &
+yhi EDGE 1.0 1.0 1.122462048 &
+zlo EDGE 1.0 1.0 1.122462048 &
+zhi EDGE 1.0 1.0 1.122462048 units box
+
+##################################################
+##################################################
+# PART 1 - Initial equilibration
+##################################################
+##################################################
+
+# Bond potential
+
+bond_style harmonic
+bond_coeff 1 EHARM 1.1
+bond_coeff 2 2.0 1.1
+
+##################################################
+
+# Angle potential
+
+angle_style cosine
+angle_coeff 1 1.0
+
+##################################################
+
+# Pairwise interaction
+# Use soft potential for equilibration to resolve crossovers
+
+pair_style soft 1.12246152962189
+pair_coeff * * ESOFT 1.12246152962189
+variable prefactor equal ramp(0,ESOFT)
+fix push all adapt 1 pair soft a * * v_prefactor
+
+##################################################
+
+# Set Brownian dynamics
+
+fix 1 all nve # NVE ensemble
+fix 2 all langevin 1.0 1.0 1.0 PREP1_SEED # Brownian dynamics
+
+##################################################
+
+# Integrator
+
+timestep DELTA_T
+
+##################################################
+
+# Parallel computation details
+
+comm_style tiled
+comm_modify mode single cutoff IXHI
+fix bal all balance 100000 1.1 rcb
+
+##################################################
+
+# Dumps/output
+
+compute gyr all gyration
+thermo PREP1_PRINTFREQ
+thermo_style custom v_btime temp epair vol c_gyr
+dump 1 all custom PREP1_PRINTFREQ PREP1_OUTFILE id type x y z ix iy iz
+
+##################################################
+
+# Run
+
+run PREP1_TIME_1
+unfix push
+
+##################################################
+
+# Change to lj/cut pair potential
+
+pair_style lj/cut 1.12246152962189
+pair_modify shift yes
+pair_coeff * * 1.0 1.0 1.12246152962189
+comm_style tiled
+
+##################################################
+
+# Run
+
+run PREP1_TIME_2
+
+##################################################
+
+# Change to FENE bonds and reduce stiffness
+
+bond_style hybrid harmonic fene
+bond_coeff 1 fene 30.0 1.6 1.0 1.0
+bond_coeff 2 harmonic 0.1 1.1
+special_bonds fene
+
+angle_coeff 1 3.0
+
+##################################################
+
+# Run
+
+run PREP1_TIME_3
+
+##################################################
+
+# Unfix/undump
+
+undump 1
+unfix wall
+
+write_data PREP1_ENDFILE nocoeff
+
+##################################################
+##################################################
+# PART 2 - Change to spherical box
+##################################################
+##################################################
+
+# Set Brownian dynamics
+
+unfix 1
+unfix 2
+fix 1 all nve
+fix 2 all langevin 1.0 1.0 1.0 PREP2_SEED
+
+##################################################
+
+# Dumps/output
+
+thermo PREP2_PRINTFREQ
+thermo_style custom v_btime temp epair vol c_gyr
+dump 1 all custom PREP2_PRINTFREQ PREP2_OUTFILE id type x y z ix iy iz
+
+##################################################
+
+# Reduce simulation box size using indenter
+
+variable radius equal ramp(RSTART,REND)
+
+reset_timestep 0
+
+fix sphbox all indent 200.0 sphere 0.0 0.0 0.0 v_radius side in units box
+
+run PREP2_TIME
+
+##################################################
+
+# Unfix/undump
+
+undump 1
+unfix sphbox
+
+write_data PREP2_ENDFILE nocoeff
+
