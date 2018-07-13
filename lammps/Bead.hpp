@@ -25,6 +25,9 @@ private:
   int boundaryCount [3];
   int type;
   int label;
+
+  vector<shared_ptr<Bond> > bondList {};
+  vector<shared_ptr<Angle> > angleList {};
   
   vector<weak_ptr<BeadListener> > beadListeners {};
   vector<weak_ptr<BondListener> > bondListeners {};
@@ -48,6 +51,9 @@ public:
        int nx, int ny, int nz, int type, int label);
   Bead(double x, double y, double z);
   Bead();
+  
+  // Destructor
+  ~Bead();
 
   // Accesor methods
   void setPosition(int dim, double value);
@@ -88,9 +94,6 @@ public:
   void addAngleListener(const shared_ptr<AngleListener>& listener);
   void removeAngleListener(const shared_ptr<AngleListener>& listener);
 
-private:
-  vector<shared_ptr<Bond> > bondList {};
-  vector<shared_ptr<Angle> > angleList {};
 };
 
 #endif

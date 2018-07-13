@@ -33,7 +33,12 @@ int Angle::getType(){
 
 // For handling listeners
 void Angle::addListener(const shared_ptr<AngleListener>& l){
-  listeners.push_back(l);
+  auto it = std::find_if(listeners.begin(), listeners.end(),
+			 [&](const weak_ptr<AngleListener>& p){
+			   return p.lock() == l;});
+  if (it == listeners.end()){
+    listeners.push_back(l);
+  }
 }
 
 void Angle::removeListener(const shared_ptr<AngleListener>& l){

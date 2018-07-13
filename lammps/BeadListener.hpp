@@ -7,6 +7,7 @@
 #define BEADLISTENER_HPP
 
 #include <memory>
+#include "SharedFromThis.hpp"
 
 using std::shared_ptr;
 
@@ -14,7 +15,8 @@ class Bead;
 class Bond; 
 class Angle;
 
-class BeadListener {
+class BeadListener : 
+  public inheritable_enable_shared_from_this<BeadListener> {
 
 public:
   virtual void beadTypeChanged(const shared_ptr<Bead>& bead, 

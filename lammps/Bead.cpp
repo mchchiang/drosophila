@@ -17,8 +17,6 @@ using std::pair;
 using std::weak_ptr;
 using std::shared_ptr;
 using std::make_shared;
-//using BondIterator = vector<shared_ptr<Bond> >::iterator;
-//using AngleIterator = vector<shared_ptr<Angle> >::iterator;
 
 // Constructors
 Bead::Bead(double x, double y, double z,
@@ -26,8 +24,8 @@ Bead::Bead(double x, double y, double z,
 		   int nx, int ny, int nz, int t, int l) :
   position {x, y, z}, velocity {vx, vy, vz},
   boundaryCount {nx, ny, nz}, type {t}, label {l} {
-	bondList.reserve(0);
-	angleList.reserve(0);
+    bondList.reserve(0);
+    angleList.reserve(0);
 }
 
 Bead::Bead(double x, double y, double z) :
@@ -36,6 +34,15 @@ Bead::Bead(double x, double y, double z) :
 Bead::Bead() :
   Bead {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0} {}
 
+
+// Destructor
+Bead::~Bead(){
+  removeAllBonds();
+  removeAllAngles();
+  beadListeners.clear();
+  bondListeners.clear();
+  angleListeners.clear();
+}
 
 // Accessor methods
 void Bead::setPosition(int dim, double value){
@@ -233,7 +240,12 @@ void Bead::removeAllAngles(){
 
 // For handling bead, bond, and angle listeners
 void Bead::addBeadListener(const shared_ptr<BeadListener>& l){
-  beadListeners.push_back(l); 
+  auto it = std::find_if(beadListeners.begin(), beadListeners.end(),
+			 [&](const weak_ptr<BeadListener>& p){
+			   return p.lock() == l;});
+  if (it == beadListeners.end()){
+    beadListeners.push_back(l); 
+  }
 }
 
 void Bead::removeBeadListener(const shared_ptr<BeadListener>& l){
@@ -246,10 +258,15 @@ void Bead::removeBeadListener(const shared_ptr<BeadListener>& l){
 }
 
 void Bead::addBondListener(const shared_ptr<BondListener>& l){
-  bondListeners.push_back(l);
-  // Register the listener to all existing bonds
-  for (auto const& b: bondList){
-    b->addListener(l);
+  auto it = std::find_if(bondListeners.begin(), bondListeners.end(),
+			 [&](const weak_ptr<BondListener>& p){
+			   return p.lock() == l;});
+  if (it == bondListeners.end()){
+    bondListeners.push_back(l);
+    // Register the listener to all existing bonds
+    for (auto const& b: bondList){
+      b->addListener(l);
+    }
   }
 }
 
@@ -267,10 +284,15 @@ void Bead::removeBondListener(const shared_ptr<BondListener>& l){
 }
 
 void Bead::addAngleListener(const shared_ptr<AngleListener>& l){
-  angleListeners.push_back(l);
-  // Register the listener to all existing angles
-  for (auto const& a: angleList){
-    a->addListener(l);
+  auto it = std::find_if(angleListeners.begin(), angleListeners.end(),
+			 [&](const weak_ptr<AngleListener>& p){
+			   return p.lock() == l;});
+  if (it == angleListeners.end()){
+    angleListeners.push_back(l);
+    // Register the listener to all existing angles
+    for (auto const& a: angleList){
+      a->addListener(l);
+    }
   }
 }
 

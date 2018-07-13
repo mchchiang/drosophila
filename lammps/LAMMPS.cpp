@@ -13,6 +13,9 @@
 #include "Angle.hpp"
 #include "Polymer.hpp"
 #include "LAMMPS.hpp"
+#include "BeadListener.hpp"
+#include "BondListener.hpp"
+#include "AngleListener.hpp"
 
 using std::cout;
 using std::endl;
@@ -68,16 +71,17 @@ double LAMMPS::getLz(){
 }
 
 int LAMMPS::getNumOfBeads(){
-  int total {};
+  /*  int total {};
   for (auto const& p : polymers){
     total += p.second->getNumOfBeads();
   }
   total += beads.size();
-  return total;
+  return total;*/
+  return numOfBeads;
 }
 
 int LAMMPS::getNumOfBonds(){
-  int nbeads {}, total {};
+  /*  int nbeads {}, total {};
   shared_ptr<Polymer> polymer;
   shared_ptr<Bead> bead;
   for (auto const& p : polymers){
@@ -91,11 +95,12 @@ int LAMMPS::getNumOfBonds(){
 	bead = b.second;
 	total += bead->getNumOfBonds();
   }
-  return total/2;
+  return total/2;*/
+  return numOfBonds;
 }
 
 int LAMMPS::getNumOfAngles(){
-  int nbeads {}, total {};
+  /*  int nbeads {}, total {};
   shared_ptr<Polymer> polymer;
   shared_ptr<Bead> bead;
   for (auto const& p : polymers){
@@ -109,7 +114,8 @@ int LAMMPS::getNumOfAngles(){
 	bead = b.second;
 	total += bead->getNumOfAngles();
   }
-  return total/3;
+  return total/3;*/
+  return numOfAngles;
 }
 
 void LAMMPS::setTypesOfBeads(int type){
@@ -117,7 +123,8 @@ void LAMMPS::setTypesOfBeads(int type){
 }
 
 int LAMMPS::getTypesOfBeads(){
-  return typesOfBeads;
+  //  return typesOfBeads;
+  return beadTypeCount.size();
 }
 
 void LAMMPS::setTypesOfBonds(int type){
@@ -125,7 +132,8 @@ void LAMMPS::setTypesOfBonds(int type){
 }
 
 int LAMMPS::getTypesOfBonds(){
-  return typesOfBonds;
+  //  return typesOfBonds;
+  return bondTypeCount.size();
 }
 
 void LAMMPS::setTypesOfAngles(int type){
@@ -133,7 +141,8 @@ void LAMMPS::setTypesOfAngles(int type){
 }
 
 int LAMMPS::getTypesOfAngles(){
-  return typesOfAngles;
+  //  return typesOfAngles;
+  return angleTypeCount.size();
 }
 
 void LAMMPS::addBead(int id, shared_ptr<Bead> bead){
@@ -150,8 +159,8 @@ void LAMMPS::removeBead(int id){
 
 void LAMMPS::removeAllBeads(){
   for (auto const& b : beads){
-	b.second->removeAllBonds();
-	b.second->removeAllAngles();
+    b.second->removeAllBonds();
+    b.second->removeAllAngles();
   }
   beads.clear();
 }
@@ -169,7 +178,7 @@ void LAMMPS::removePolymer(int id){
 
 void LAMMPS::removeAllPolymers(){
   for (auto const& p : polymers){
-	p.second->removeAllBeads();
+    p.second->removeAllBeads();
   }
   polymers.clear();
 }
@@ -545,7 +554,7 @@ void LAMMPS::readInputMap(ifstream& reader,
       if (readingPolymer){
 	ss >> key >> startBead >> endBead;
 	size = endBead - startBead + 1;
-	polymer = make_shared<Polymer>(size, false);
+	polymer = make_shared<Polymer>(size, 1, 1, 1, false);
 	for (int i {startBead}; i <= endBead; i++){
 	  polymer->addBead(beadIndexMap[i]);
 	  beadIndexMap.erase(i);
@@ -796,8 +805,19 @@ void LAMMPS::beadLabelChanged(const shared_ptr<Bead>& bead,
   // LAMMPS don't need to no bead label changes
 }
 
-void LAMMPS::bondCreated(const shared_ptr<Bond>& bond){}  
-void LAMMPS::bondRemoved(const shared_ptr<Bond>& bond){}
+void LAMMPS::bondCreated(const shared_ptr<Bond>& bond){
+  numOfBonds++;
+  bondTypeCount[bond->getType()]++;
+}
+  
+void LAMMPS::bondRemoved(const shared_ptr<Bond>& bond){
+  numOfBonds--;
+  int type {bond->getType()};
+  bondTypeCount[type]--;
+  if (bondTypeCount[type] <= 0){
+    bondTypeCount.erase(type);
+  }
+}
 
 void LAMMPS::bondTypeChanged(const shared_ptr<Bond>& bond, 
 			     int oldType, int newType){
@@ -808,8 +828,19 @@ void LAMMPS::bondTypeChanged(const shared_ptr<Bond>& bond,
   }
 }
 
-void LAMMPS::angleCreated(const shared_ptr<Angle>& angle){}
-void LAMMPS::angleRemoved(const shared_ptr<Angle>& angle){}
+void LAMMPS::angleCreated(const shared_ptr<Angle>& angle){
+  numOfAngles++;
+  angleTypeCount[angle->getType()]++;
+}
+
+void LAMMPS::angleRemoved(const shared_ptr<Angle>& angle){
+  numOfAngles--;
+  int type {angle->getType()};
+  angleTypeCount[type]--;
+  if (angleTypeCount[type] <= 0){
+    angleTypeCount.erase(type);
+  }
+}
 
 void LAMMPS::angleTypeChanged(const shared_ptr<Angle>& angle,
 			      int oldType, int newType){
@@ -820,34 +851,70 @@ void LAMMPS::angleTypeChanged(const shared_ptr<Angle>& angle,
   }
 }
 
+void LAMMPS::beadCreated(const shared_ptr<Bead>& bead, int beadType){
+  bead->addBeadListener(BeadListener::shared_from_this());
+  bead->addBondListener(BondListener::shared_from_this());
+  bead->addAngleListener(AngleListener::shared_from_this());
+  numOfBeads++;
+  beadTypeCount[beadType]++;
+}
 
-shared_ptr<Polymer> LAMMPS::createPolymer(int id, int numOfBeads,
+void LAMMPS::polymerCreated(const shared_ptr<Polymer>& polymer, int nBeads,
+			    int beadType, int bondType, int angleType){
+  polymer->addBeadListener(BeadListener::shared_from_this());
+  polymer->addBondListener(BondListener::shared_from_this());
+  polymer->addAngleListener(AngleListener::shared_from_this());
+  numOfBeads += nBeads;
+  numOfBonds += nBeads-1;
+  numOfAngles += nBeads-2;
+  beadTypeCount[beadType] += nBeads;
+  bondTypeCount[bondType] += nBeads-1;
+  angleTypeCount[angleType] += nBeads-2;
+}
+
+// For adding polymers and beads to the system
+shared_ptr<Polymer> LAMMPS::createPolymer(int id, int nBeads,
 					  int beadType, int bondType,
 					  int angleType){
   removePolymer(id);
-  shared_ptr<Polymer> polymer = make_shared<Polymer>(numOfBeads, beadType,
+  shared_ptr<Polymer> polymer = make_shared<Polymer>(nBeads, beadType,
 						     bondType, angleType);
+  polymerCreated(polymer, nBeads, beadType, bondType, angleType);
   addPolymer(id, polymer);
   return polymer;
 }
 
-shared_ptr<Polymer> LAMMPS::createRandomWalkPolymer(int id, int numOfBeads,
-						    int beadType,
-						    double x0, double y0, 
-						    double z0, double rx,
-						    double ry, double rz){
+shared_ptr<Polymer> 
+LAMMPS::createRandomWalkPolymer(int id, int nBeads, int beadType,
+				int bondType, int angleType,
+				double x0, double y0, double z0, 
+				double rx, double ry, double rz){
   removePolymer(id);
   shared_ptr<Polymer> polymer = 
-    Polymer::createRandomWalkPolymer(numOfBeads, beadType,
+    Polymer::createRandomWalkPolymer(nBeads, beadType, bondType, angleType,
 				     x0, y0, z0, rx, ry, rz);
+  polymerCreated(polymer, nBeads, beadType, bondType, angleType);
   addPolymer(id, polymer);
   return polymer;
 }
 
-shared_ptr<Bead> LAMMPS::createBead(int id, int beadType){
+shared_ptr<Bead> LAMMPS::createBead(int id, int beadType, int beadLabel){
   removeBead(id);
-  shared_ptr<Bead> bead = make_shared<Bead>();
-  bead->setType(beadType);
+  shared_ptr<Bead> bead = make_shared<Bead>(0,0,0,0,0,0,0,0,0,
+					    beadType, beadLabel);
+  beadCreated(bead, beadType);
+  addBead(id, bead);
+  return bead;
+}
+
+shared_ptr<Bead> LAMMPS::createBead(int id, double x, double y, double z,
+				    double vx, double vy, double vz,
+				    double nx, double ny, double nz,
+				    int beadType, int beadLabel){
+  removeBead(id);
+  shared_ptr<Bead> bead = make_shared<Bead>(x,y,z,vx,vy,vz,nx,ny,nz,
+					    beadType, beadLabel);
+  beadCreated(bead, beadType);
   addBead(id, bead);
   return bead;
 }

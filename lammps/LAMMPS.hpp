@@ -12,6 +12,8 @@
 #include "Polymer.hpp"
 #include "Bead.hpp"
 #include "BeadListener.hpp"
+#include "BondListener.hpp"
+#include "AngleListener.hpp"
 
 using std::map;
 using std::string;
@@ -19,11 +21,16 @@ using std::vector;
 using std::ifstream;
 using std::stringstream;
 
-class LAMMPS : public BeadListener {
+class LAMMPS : public BeadListener, public BondListener, public AngleListener {
   
 private:
   map<int,shared_ptr<Polymer> > polymers {};
   map<int,shared_ptr<Bead> > beads {};
+
+  // For number count
+  int numOfBeads {};
+  int numOfBonds {};
+  int numOfAngles {};
 
   // For type count
   map<int,int> beadTypeCount {};
@@ -136,17 +143,25 @@ public:
   void angleRemoved(const shared_ptr<Angle>& angle);
   void angleTypeChanged(const shared_ptr<Angle>& angle,
 			int oldType, int newType);
-
+  void beadCreated(const shared_ptr<Bead>& bead, int beadType);
+  void polymerCreated(const shared_ptr<Polymer>& polymer, int nBeads,
+		      int beadType, int bondType, int angleType);
+  
   // For creating polymers and beads
-  shared_ptr<Polymer> createPolymer(int id, int numOfBeads,
+  shared_ptr<Polymer> createPolymer(int id, int nBeads,
 				    int beadType = 1, 
 				    int bondType = 1, 
 				    int angleType = 1);
-  shared_ptr<Polymer> createRandomWalkPolymer(int id, int numOfBeads,
-					      int beadType,
-					      double x0, double y0, double z0,
-					      double rx, double ry, double rz);
-  shared_ptr<Bead> createBead(int id, int beadType = 1);
+  shared_ptr<Polymer> 
+  createRandomWalkPolymer(int id, int nBeads, 
+			  int beadType, int bondType, int angleType,
+			  double x0, double y0, double z0,
+			  double rx, double ry, double rz);
+  shared_ptr<Bead> createBead(int id, int beadType = 1, int beadLabel = 1);
+  shared_ptr<Bead> createBead(int id, double x, double y, double z,
+			      double vx, double vy, double vz,
+			      double nx, double ny, double nz,
+			      int beadType, int beadLabel);
 
 private:
   void addBead(int id, shared_ptr<Bead> bead);

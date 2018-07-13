@@ -32,7 +32,12 @@ int Bond::getType(){
 
 // For handling listeners
 void Bond::addListener(const shared_ptr<BondListener>& l){
-  listeners.push_back(l);
+  auto it = std::find_if(listeners.begin(), listeners.end(),
+			 [&](const weak_ptr<BondListener>& p){
+			   return p.lock() == l;});
+  if (it == listeners.end()){
+    listeners.push_back(l);
+  }
 }
 
 void Bond::removeListener(const shared_ptr<BondListener>& l){

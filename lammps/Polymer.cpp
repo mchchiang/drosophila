@@ -25,6 +25,7 @@ vec rosette(const double& r, const double& a, const double& k,
 mat randRotation(double x1, double x2, double x3);
 
 // Constructors
+Polymer::Polymer() : Polymer {0, 1, 1, 1, false} {} 
 Polymer::Polymer(int nBeads, int beadType, 
 		 int bondType, int angleType, bool createBead){
 
@@ -60,13 +61,10 @@ Polymer::Polymer(int nBeads, int beadType,
   }
 }
 
-Polymer::Polymer() : Polymer {0, false} {} 
-Polymer::Polymer(int nBeads) : Polymer {nBeads, true} {}
-Polymer::Polymer(int nBeads, bool createBead) : 
-  Polymer {nBeads, 1, 1, 1, createBead} {}
-Polymer::Polymer(int nBeads, int beadType) : 
-  Polymer {nBeads, beadType, 1, 1} {}
-
+// Destructor
+Polymer::~Polymer(){
+  removeAllBeads();
+}
 
 // Accessor methods
 shared_ptr<Bead> Polymer::getBead(int id){
@@ -171,8 +169,8 @@ void Polymer::removeBead(int id){
 
 void Polymer::removeAllBeads(){
   for (auto const& bead : beads){
-	bead->removeAllBonds();
-	bead->removeAllAngles();
+    bead->removeAllBonds();
+    bead->removeAllAngles();
   }
   beads.clear();
 }
@@ -193,7 +191,7 @@ vector<double> Polymer::getCentreOfMass(double lx, double ly, double lz){
 }
 
 double Polymer::getGyrationRadius(double lx, double ly, double lz){
-  vector<double> cm = getCentreOfMass(lx, ly, lz);
+  vector<double> cm {getCentreOfMass(lx, ly, lz)};
   double dx {}, dy {}, dz {}, sum {};
   for (auto const& b : beads){
     dx = b->getPosition(0) + lx*b->getBoundaryCount(0) - cm[0];
@@ -206,17 +204,56 @@ double Polymer::getGyrationRadius(double lx, double ly, double lz){
   return sum;
 }
 
+// For handling bead, bond, angle listeners
+void Polymer::addBeadListener(const shared_ptr<BeadListener>& l){
+  for (auto const& b : beads){
+    b->addBeadListener(l);
+  }
+}
+
+void Polymer::removeBeadListener(const shared_ptr<BeadListener>& l){
+  for (auto const& b : beads){
+    b->removeBeadListener(l);
+  }
+}
+
+void Polymer::addBondListener(const shared_ptr<BondListener>& l){
+  for (auto const& b : beads){
+    b->addBondListener(l);
+  }
+}
+
+void Polymer::removeBondListener(const shared_ptr<BondListener>& l){
+  for (auto const& b : beads){
+    b->removeBondListener(l);
+  }
+}
+
+void Polymer::addAngleListener(const shared_ptr<AngleListener>& l){
+  for (auto const& b : beads){
+    b->addAngleListener(l);
+  }
+}
+
+void Polymer::removeAngleListener(const shared_ptr<AngleListener>& l){
+  for (auto const& b : beads){
+    b->removeAngleListener(l);
+  }
+}
+
 // Static factory methods for creating polymers
-shared_ptr<Polymer> Polymer::createRandomWalkPolymer(int nBeads, int beadType,
-						     double x0, double y0, 
-						     double z0, double lx, 
-						     double ly, double lz){
+shared_ptr<Polymer> 
+Polymer::createRandomWalkPolymer(int nBeads, int beadType,
+				 int bondType, int angleType,
+				 double x0, double y0, double z0, 
+				 double lx, double ly, double lz){
   // Initialise the random number generator
   std::random_device rd;
   std::mt19937 mt(rd());
   std::uniform_real_distribution<double> randDouble(0,1.0);
   double pi {M_PI};
-  shared_ptr<Polymer> polymer = make_shared<Polymer>(nBeads, beadType);
+  shared_ptr<Polymer> polymer {make_shared<Polymer>(nBeads, beadType,
+						    bondType, angleType)};
   double x, y, z, r, costheta, sintheta, phi;
   shared_ptr<Bead> previous {};
   shared_ptr<Bead> current {};
@@ -230,11 +267,9 @@ shared_ptr<Polymer> Polymer::createRandomWalkPolymer(int nBeads, int beadType,
   for (int i {1}; i < nBeads; i++){
     current = polymer->getBead(i);
     do {
-      //r = getRand();
       r = randDouble(mt);
       costheta = 1.0-2.0*r;
       sintheta = sqrt(1-costheta*costheta);
-      //r = getRand();
       r = randDouble(mt);
       phi = 2.0*pi*r;
       x = previous->getPosition(0) + sintheta * cos(phi);
@@ -249,23 +284,23 @@ shared_ptr<Polymer> Polymer::createRandomWalkPolymer(int nBeads, int beadType,
   return polymer;
 }
 
-shared_ptr<Polymer> Polymer::createRosettePolymer(int nBeads, int beadType,
-						  int beadsPerTurn, 
-						  double r, double a,
-						  double k, double p,
-						  double x0, double y0,
-						  double z0, double lx,
-						  double ly, double lz){
+shared_ptr<Polymer> 
+Polymer::createRosettePolymer(int nBeads, int beadType, int bondType, 
+			      int angleType, int beadsPerTurn, 
+			      double r, double a, double k, double p,
+			      double x0, double y0, double z0, 
+			      double lx, double ly, double lz){
   // Initialise the random number generator
   std::random_device rd;
   std::mt19937 mt(rd());
   std::uniform_real_distribution<double> randDouble(0,1.0);
   double pi {M_PI};
-  shared_ptr<Polymer> polymer = make_shared<Polymer>(nBeads, beadType);
-  double tInc = beadsPerTurn / (2.0*pi);
+  shared_ptr<Polymer> polymer {make_shared<Polymer>(nBeads, beadType,
+						    bondType, angleType)};
+  double tInc {beadsPerTurn / (2.0*pi)};
   
   // Determine height of rosette cylinder
-  double height = nBeads / static_cast<double>(beadsPerTurn);
+  double height {nBeads / static_cast<double>(beadsPerTurn)};
 
   const vec centre {x0, y0, z0};
 
@@ -327,7 +362,7 @@ vec rosette(const double& r, const double& a, const double& k,
 	    const double& p, const double& t){
   vec v (3);
   const double pi {M_PI};
-  double cos2kt = cos(k*t); 
+  double cos2kt {cos(k*t)}; 
   cos2kt *= cos2kt;
   v(0) = r*(a+(1-a)*cos2kt*cos(t));
   v(1) = r*(a+(1-a)*cos2kt*sin(t));
@@ -338,19 +373,19 @@ vec rosette(const double& r, const double& a, const double& k,
 
 mat randRotation(double x1, double x2, double x3){
   const double pi2 {M_PI*2};
-  double theta = x1 * pi2; // Rotation about the pole (Z)
-  double phi = x2 * pi2; // Direction of pole deflection
-  double z = x3 * 2.0; // Magnitude of pole deflection
+  double theta {x1 * pi2}; // Rotation about the pole (Z)
+  double phi {x2 * pi2}; // Direction of pole deflection
+  double z {x3 * 2.0}; // Magnitude of pole deflection
 
-  double r = sqrt(z);
-  double vx = cos(phi) * r;
-  double vy = sin(phi) * r;
-  double vz = sqrt(2.0 - z);
+  double r {sqrt(z)};
+  double vx {cos(phi) * r};
+  double vy {sin(phi) * r};
+  double vz {sqrt(2.0 - z)};
 
-  double st = sin(theta);
-  double ct = cos(theta);
-  double sx = vx * ct + vy * st;
-  double sy = vy * ct - vx * st;
+  double st {sin(theta)};
+  double ct {cos(theta)};
+  double sx {vx * ct + vy * st};
+  double sy {vy * ct - vx * st};
 
   // Construct the rotation matrix
   mat rotation(3,3);

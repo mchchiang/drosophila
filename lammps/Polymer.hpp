@@ -18,11 +18,11 @@ private:
 public:
   // Constructor
   Polymer(); 
-  Polymer(int numOfBeads);
-  Polymer(int numOfBeads, bool createBead);
-  Polymer(int numOfBeads, int beadType);
   Polymer(int numOfBeads, int beadType, 
 	  int bondType, int angleType, bool createBead = true);
+
+  // Destructor
+  ~Polymer();
 
   // Accessor methods
   shared_ptr<Bead> getBead(int id);
@@ -41,15 +41,25 @@ public:
   // Statistics of polymer
   vector<double> getCentreOfMass(double lx, double ly, double lz);
   double getGyrationRadius(double lx, double ly, double lz);
+
+  // For handling bead, bond, angle listeners
+  void addBeadListener(const shared_ptr<BeadListener>& listener);
+  void removeBeadListener(const shared_ptr<BeadListener>& listener);
+  void addBondListener(const shared_ptr<BondListener>& listener);
+  void removeBondListener(const shared_ptr<BondListener>& listener);
+  void addAngleListener(const shared_ptr<AngleListener>& listener);
+  void removeAngleListener(const shared_ptr<AngleListener>& listener);
   
   // Static factory methods
   static shared_ptr<Polymer> 
-  createRandomWalkPolymer(int numOfBeads, int beadType,
+  createRandomWalkPolymer(int numOfBeads, int beadType, 
+			  int bondType, int angleType,
 			  double x, double y, double z,
 			  double lx, double ly, double lz);
 
   static shared_ptr<Polymer> 
-  createRosettePolymer(int nBeads, int beadType, int beadsPerTurn, 
+  createRosettePolymer(int nBeads, int beadType, 
+		       int bondType, int angleType, int beadsPerTurn, 
 		       double r, double a, double k, double p,
 		       double x0, double y0, double z0, 
 		       double lx, double ly, double lz);
