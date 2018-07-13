@@ -1,0 +1,14 @@
+# File for drosophila chromosome length in base pairs (bp)
+# chromosome no.      base pair
+chr2L 23513712
+chr2R 25286936
+chr3L 28110227
+chr3R 32079331
+chr4  1348131
+chrX  23542271
+chr2LHet 368872
+chr2RHet 3288761
+chr3LHet 2555491
+chr3RHet 2517507
+chrXHet 204112
+chrYHet 347038
