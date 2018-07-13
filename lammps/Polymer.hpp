@@ -43,19 +43,16 @@ public:
   double getGyrationRadius(double lx, double ly, double lz);
   
   // Static factory methods
-  static shared_ptr<Polymer> createRandomWalkPolymer(int numOfBeads, 
-						     int beadType,
-						     double x, double y,
-						     double z, double lx, 
-						     double ly, double lz);
+  static shared_ptr<Polymer> 
+  createRandomWalkPolymer(int numOfBeads, int beadType,
+			  double x, double y, double z,
+			  double lx, double ly, double lz);
 
-  static shared_ptr<Polymer> createRosettePolymer(int nBeads, int beadType,
-						  int beadsPerTurn, 
-						  double r, double a, 
-						  double k, double p,
-						  double x0, double y0,
-						  double z0, double lx,
-						  double ly, double lz);
+  static shared_ptr<Polymer> 
+  createRosettePolymer(int nBeads, int beadType, int beadsPerTurn, 
+		       double r, double a, double k, double p,
+		       double x0, double y0, double z0, 
+		       double lx, double ly, double lz);
   };
 
 #endif

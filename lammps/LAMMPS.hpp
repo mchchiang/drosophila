@@ -11,6 +11,7 @@
 #include <string>
 #include "Polymer.hpp"
 #include "Bead.hpp"
+#include "BeadListener.hpp"
 
 using std::map;
 using std::string;
@@ -18,11 +19,16 @@ using std::vector;
 using std::ifstream;
 using std::stringstream;
 
-class LAMMPS {
+class LAMMPS : public BeadListener {
   
 private:
   map<int,shared_ptr<Polymer> > polymers {};
   map<int,shared_ptr<Bead> > beads {};
+
+  // For type count
+  map<int,int> beadTypeCount {};
+  map<int,int> bondTypeCount {};
+  map<int,int> angleTypeCount {};
   
   // Box size
   double lx {};
@@ -117,6 +123,21 @@ public:
   bool importData(string inFile, string mapFile);
   bool exportData(string outFile, string mapFile);
   
+  // For handling bead, bond, and angle events
+  void beadTypeChanged(const shared_ptr<Bead>& bead, 
+		       int oldType, int newType);
+  void beadLabelChanged(const shared_ptr<Bead>& bead,
+			int oldLabel, int newLabel);
+  void bondCreated(const shared_ptr<Bond>& bond);  
+  void bondRemoved(const shared_ptr<Bond>& bond);
+  void bondTypeChanged(const shared_ptr<Bond>& bond, 
+		       int oldType, int newType);
+  void angleCreated(const shared_ptr<Angle>& angle);
+  void angleRemoved(const shared_ptr<Angle>& angle);
+  void angleTypeChanged(const shared_ptr<Angle>& angle,
+			int oldType, int newType);
+
+  // For creating polymers and beads
   shared_ptr<Polymer> createPolymer(int id, int numOfBeads,
 				    int beadType = 1, 
 				    int bondType = 1, 

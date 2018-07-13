@@ -212,7 +212,6 @@ shared_ptr<Polymer> Polymer::createRandomWalkPolymer(int nBeads, int beadType,
 						     double z0, double lx, 
 						     double ly, double lz){
   // Initialise the random number generator
-  //  srand(time(NULL));
   std::random_device rd;
   std::mt19937 mt(rd());
   std::uniform_real_distribution<double> randDouble(0,1.0);
@@ -258,7 +257,6 @@ shared_ptr<Polymer> Polymer::createRosettePolymer(int nBeads, int beadType,
 						  double z0, double lx,
 						  double ly, double lz){
   // Initialise the random number generator
-  //srand(time(NULL));
   std::random_device rd;
   std::mt19937 mt(rd());
   std::uniform_real_distribution<double> randDouble(0,1.0);
@@ -284,9 +282,6 @@ shared_ptr<Polymer> Polymer::createRosettePolymer(int nBeads, int beadType,
   while (outOfBound){
 	outOfBound = false;
 	// Gernerate random number
-	//x1 = getRand();
-	//x2 = getRand();
-	//x3 = getRand();
 	x1 = randDouble(mt);
 	x2 = randDouble(mt);
 	x3 = randDouble(mt);

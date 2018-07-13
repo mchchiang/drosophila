@@ -781,6 +781,46 @@ void LAMMPS::writeAngle(stringstream& writer, int angleIndex, int angleType,
          << bead3Index << endl;
 }
 
+// For handling bead, bond, and angle events
+void LAMMPS::beadTypeChanged(const shared_ptr<Bead>& bead, 
+			     int oldType, int newType){
+  beadTypeCount[oldType]--;
+  beadTypeCount[newType]++;
+  if (beadTypeCount[oldType] <= 0){
+    beadTypeCount.erase(oldType);
+  }
+}
+
+void LAMMPS::beadLabelChanged(const shared_ptr<Bead>& bead,
+			      int oldLabel, int newLabel){
+  // LAMMPS don't need to no bead label changes
+}
+
+void LAMMPS::bondCreated(const shared_ptr<Bond>& bond){}  
+void LAMMPS::bondRemoved(const shared_ptr<Bond>& bond){}
+
+void LAMMPS::bondTypeChanged(const shared_ptr<Bond>& bond, 
+			     int oldType, int newType){
+  bondTypeCount[oldType]--;
+  bondTypeCount[newType]++;
+  if (bondTypeCount[oldType] <= 0){
+    bondTypeCount.erase(oldType);
+  }
+}
+
+void LAMMPS::angleCreated(const shared_ptr<Angle>& angle){}
+void LAMMPS::angleRemoved(const shared_ptr<Angle>& angle){}
+
+void LAMMPS::angleTypeChanged(const shared_ptr<Angle>& angle,
+			      int oldType, int newType){
+  angleTypeCount[oldType]--;
+  angleTypeCount[newType]++;
+  if (angleTypeCount[oldType] <= 0){
+    angleTypeCount.erase(oldType);
+  }
+}
+
+
 shared_ptr<Polymer> LAMMPS::createPolymer(int id, int numOfBeads,
 					  int beadType, int bondType,
 					  int angleType){
