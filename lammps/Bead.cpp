@@ -34,16 +34,6 @@ Bead::Bead(double x, double y, double z) :
 Bead::Bead() :
   Bead {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0} {}
 
-
-// Destructor
-Bead::~Bead(){
-  removeAllBonds();
-  removeAllAngles();
-  beadListeners.clear();
-  bondListeners.clear();
-  angleListeners.clear();
-}
-
 // Accessor methods
 void Bead::setPosition(int dim, double value){
   position[dim] = value;

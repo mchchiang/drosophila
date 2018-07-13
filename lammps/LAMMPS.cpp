@@ -36,7 +36,6 @@ LAMMPS::LAMMPS() {}
 
 LAMMPS::LAMMPS(double x, double y, double z) : lx {x}, ly {y}, lz {z} {}
 
-
 // Accessor methods
 shared_ptr<Polymer> LAMMPS::getPolymer(int id){
   return polymers[id];
@@ -678,7 +677,7 @@ void LAMMPS::writePositionAndVelocity(const shared_ptr<Bead>& bead,
 				      stringstream& positionWriter,
 				      stringstream& velocityWriter,
 				      int& beadIndexCount){
-  if (beadIndexMap.count(bead) == 0){
+  if (beadIndexMap[bead] == 0){ // Bead is not in the index map
     writePosition(positionWriter, bead, beadIndexCount);
     writeVelocity(velocityWriter, bead, beadIndexCount);
     beadIndexMap[bead] = beadIndexCount;
@@ -697,7 +696,7 @@ void LAMMPS::writeBondAndAngle(const shared_ptr<Bead>& bead,
   vector<shared_ptr<Angle> > angleList = bead->getAngles();
   
   for (auto const& bond : bondList){
-    if (bondIndexMap.count(bond) == 0){
+    if (bondIndexMap[bond] == 0){ // Bond is not in the index map
       bondIndexMap[bond] = bondIndexCount;
       int type = bond->getType();
       int bead1Index = beadIndexMap[bond->getBead(0)];
@@ -708,7 +707,7 @@ void LAMMPS::writeBondAndAngle(const shared_ptr<Bead>& bead,
   }
   
   for (auto const& angle : angleList){
-    if (angleIndexMap.count(angle) == 0){
+    if (angleIndexMap[angle] == 0){ // Angle is not in the index map
       angleIndexMap[angle] = angleIndexCount;
       int type = angle->getType();
       int bead1Index = beadIndexMap[angle->getBead(0)];

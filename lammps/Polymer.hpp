@@ -21,9 +21,6 @@ public:
   Polymer(int numOfBeads, int beadType, 
 	  int bondType, int angleType, bool createBead = true);
 
-  // Destructor
-  ~Polymer();
-
   // Accessor methods
   shared_ptr<Bead> getBead(int id);
   vector<shared_ptr<Bead> >& getBeads();

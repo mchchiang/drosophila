@@ -61,11 +61,6 @@ Polymer::Polymer(int nBeads, int beadType,
   }
 }
 
-// Destructor
-Polymer::~Polymer(){
-  removeAllBeads();
-}
-
 // Accessor methods
 shared_ptr<Bead> Polymer::getBead(int id){
   return beads[id];

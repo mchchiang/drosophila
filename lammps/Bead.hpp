@@ -52,9 +52,6 @@ public:
   Bead(double x, double y, double z);
   Bead();
   
-  // Destructor
-  ~Bead();
-
   // Accesor methods
   void setPosition(int dim, double value);
   double getPosition(int dim);
