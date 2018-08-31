@@ -13,8 +13,8 @@ variable btime equal (step*DELTA_T)
 units lj
 atom_style angle
 boundary p p p
-neighbor 1.1 bin
-neigh_modify every 1 delay 1 check yes
+neighbor 1.8 bin
+neigh_modify every 2 delay 2 check yes
 
 #restart RESTART_FREQ RESTART_FILE
 read_data INIT_FILE
@@ -39,31 +39,6 @@ zhi EDGE 1.0 1.0 1.122462048 units box
 ##################################################
 ##################################################
 
-# Bond potential
-
-bond_style harmonic
-bond_coeff 1 EHARM 1.1
-bond_coeff 2 2.0 1.1
-
-##################################################
-
-# Angle potential
-
-angle_style cosine
-angle_coeff 1 1.0
-
-##################################################
-
-# Pairwise interaction
-# Use soft potential for equilibration to resolve crossovers
-
-pair_style soft 1.12246152962189
-pair_coeff * * ESOFT 1.12246152962189
-variable prefactor equal ramp(0,ESOFT)
-fix push all adapt 1 pair soft a * * v_prefactor
-
-##################################################
-
 # Set Brownian dynamics
 
 fix 1 all nve # NVE ensemble
@@ -80,7 +55,6 @@ timestep DELTA_T
 # Parallel computation details
 
 comm_style tiled
-comm_modify mode single cutoff IXHI
 fix bal all balance 100000 1.1 rcb
 
 ##################################################
@@ -88,46 +62,56 @@ fix bal all balance 100000 1.1 rcb
 # Dumps/output
 
 compute gyr all gyration
-thermo PREP1_PRINTFREQ
+thermo THERMO_PRINTFREQ
 thermo_style custom v_btime temp epair vol c_gyr
 dump 1 all custom PREP1_PRINTFREQ PREP1_OUTFILE id type x y z ix iy iz
 
 ##################################################
 
-# Run
+# Potentials
 
-run PREP1_TIME_1
-unfix push
+bond_style harmonic
+bond_coeff 1 1000.0 1.0
+bond_coeff 2 1.0 1.0
+
+angle_style cosine
+angle_coeff 1 10.0
+
+# Use soft potential for equilibration to resolve crossovers
+
+pair_style soft 1.12246152962189
+pair_coeff * * 1.0 1.12246152962189
+variable asoft equal ramp(0.0,100.0)
+fix push all adapt 1 pair soft a * * v_asoft
 
 ##################################################
 
-# Change to lj/cut pair potential
+# Run
+
+comm_modify mode single cutoff COMMCUTOFF
+
+run PREP1_TIME_1
+
+unfix push
+variable asoft delete
+
+comm_style tiled
+
+pair_style soft 1.12246152962189
+pair_coeff * * 100.0 1.12246152962189
+
+bond_style hybrid harmonic fene
+bond_coeff 1 fene 30.0 1.6 1.0 1.0
+bond_coeff 2 harmonic 10.0 1.0
+special_bonds fene
+
+run PREP1_TIME_2
 
 pair_style lj/cut 1.12246152962189
 pair_modify shift yes
 pair_coeff * * 1.0 1.0 1.12246152962189
-comm_style tiled
-
-##################################################
-
-# Run
-
-run PREP1_TIME_2
-
-##################################################
-
-# Change to FENE bonds and reduce stiffness
-
-bond_style hybrid harmonic fene
-bond_coeff 1 fene 30.0 1.6 1.0 1.0
-bond_coeff 2 harmonic 0.1 1.1
-special_bonds fene
 
 angle_coeff 1 3.0
-
-##################################################
-
-# Run
 
 run PREP1_TIME_3
 
@@ -135,21 +119,20 @@ run PREP1_TIME_3
 
 # Unfix/undump
 
-undump 1
-unfix wall
-
 write_data PREP1_ENDFILE nocoeff
 
+unfix 1
+unfix 2
+undump 1
+
 ##################################################
 ##################################################
-# PART 2 - Change to spherical box
+# PART 2 - Squeeze chromosomes in a sphere
 ##################################################
 ##################################################
 
 # Set Brownian dynamics
 
-unfix 1
-unfix 2
 fix 1 all nve
 fix 2 all langevin 1.0 1.0 1.0 PREP2_SEED
 
@@ -157,15 +140,15 @@ fix 2 all langevin 1.0 1.0 1.0 PREP2_SEED
 
 # Dumps/output
 
-thermo PREP2_PRINTFREQ
-thermo_style custom v_btime temp epair vol c_gyr
+variable radius equal ramp(RSTART,REND)
+
+thermo THERMO_PRINTFREQ
+thermo_style custom v_btime temp epair vol c_gyr v_radius
 dump 1 all custom PREP2_PRINTFREQ PREP2_OUTFILE id type x y z ix iy iz
 
 ##################################################
 
 # Reduce simulation box size using indenter
-
-variable radius equal ramp(RSTART,REND)
 
 reset_timestep 0
 
@@ -177,8 +160,47 @@ run PREP2_TIME
 
 # Unfix/undump
 
+write_data PREP2_ENDFILE nocoeff
+
+unfix 1
+unfix 2
 undump 1
 unfix sphbox
 
-write_data PREP2_ENDFILE nocoeff
+##################################################
+##################################################
+# PART 3 - Equilibration after squeezing
+##################################################
+##################################################
 
+# Set Brownian dynamics
+
+fix 1 all nve
+fix 2 all langevin 1.0 1.0 1.0 PREP3_SEED
+
+##################################################
+
+# Dumps/output
+
+thermo THERMO_PRINTFREQ
+thermo_style custom v_btime temp epair vol c_gyr 
+dump 1 all custom PREP3_PRINTFREQ PREP3_OUTFILE id type x y z ix iy iz
+
+reset_timestep 0
+
+fix sphbox all indent 200.0 sphere 0.0 0.0 0.0 REND side in units box
+
+run PREP3_TIME
+
+##################################################
+
+# Unfix/undump
+
+write_data PREP3_ENDFILE nocoeff
+
+unfix 1
+unfix 2
+undump 1
+unfix sphbox
+
+##################################################
