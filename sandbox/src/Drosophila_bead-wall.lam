@@ -1,0 +1,312 @@
+# Drosophila_bead-wall.lam
+
+##################################################
+
+# Variables and definitions
+
+variable btime equal (step*DELTA_T)
+
+##################################################
+
+# Simulation basic definitions
+
+units lj
+atom_style angle
+boundary p p p
+neighbor 1.8 bin
+neigh_modify every 2 delay 2 check yes
+
+#restart RESTART_FREQ RESTART_FILE
+read_data INIT_FILE
+
+##################################################
+
+# Simulation box definition -- repulsive at the boundary
+
+change_box all x final XLO XHI y final YLO YHI & 
+z final ZLO ZHI  boundary f f f units box
+fix wall all wall/lj126 &
+xlo EDGE 1.0 1.0 1.122462048 &
+xhi EDGE 1.0 1.0 1.122462048 &
+ylo EDGE 1.0 1.0 1.122462048 &
+yhi EDGE 1.0 1.0 1.122462048 &
+zlo EDGE 1.0 1.0 1.122462048 &
+zhi EDGE 1.0 1.0 1.122462048 units box
+
+##################################################
+
+# Parallel computation details
+
+comm_style tiled
+fix bal all balance 100000 1.1 rcb
+
+##################################################
+
+# Integrator
+
+timestep DELTA_T
+
+##################################################
+##################################################
+# PART 0 - Reduce genomic radius to accommodate lamina
+##################################################
+##################################################
+
+# Set Brownian dynamics
+
+fix 1 all nve
+fix 2 all langevin 1.0 1.0 1.0 PREP0_SEED
+
+##################################################
+
+# Dumps/output
+
+variable rlow equal (RADIUS-2.0)
+variable radius equal ramp(RADIUS,${rlow})
+
+compute gyr all gyration
+
+thermo THERMO_PRINTFREQ
+thermo_style custom v_btime temp epair vol c_gyr v_radius
+dump 1 all custom PREP0_PRINTFREQ PREP0_OUTFILE id type x y z ix iy iz
+
+##################################################
+
+# Potentials
+
+bond_style hybrid harmonic fene
+bond_coeff 1 fene 30.0 1.6 1.0 1.0
+bond_coeff 2 harmonic 1.0 1.0
+special_bonds fene
+
+angle_style cosine
+angle_coeff 1 3.0
+
+pair_style lj/cut 1.12246152962189
+pair_modify shift yes
+pair_coeff * * 1.0 1.0 1.12246152962189
+pair_coeff 4 4 0.0 0.0 # No interactions between lamina beads
+
+##################################################
+
+# Reduce simulation box size using indenter
+
+reset_timestep 0
+
+fix sphbox all indent 200.0 sphere 0.0 0.0 0.0 v_radius side in units box
+
+run PREP0_TIME
+
+write_data PREP0_ENDFILE nocoeff
+
+##################################################
+
+# Unfix/undump
+
+unfix 1
+unfix 2
+undump 1
+unfix sphbox
+variable radius delete
+
+##################################################
+##################################################
+# PART 1 - Add the lamina beads
+##################################################
+##################################################
+
+# Create the lamina
+
+variable rLaminCentreOut equal (RADIUS+1.0)
+variable rLaminCentreIn equal (RADIUS+0.5)
+variable rLaminOut equal (RADIUS+1.5)
+variable rLaminIn equal (RADIUS)
+
+region s1 sphere 0.0 0.0 0.0 ${rLaminCentreOut} side in
+region s2 sphere 0.0 0.0 0.0 ${rLaminCentreIn} side out
+region shell intersect 2 s1 s2
+
+create_atoms 4 random LAM_ATOMS LAM_SEED shell
+
+group lamin type 4
+group chromo subtract all lamin
+
+##################################################
+
+# Equilibrate the lamina beads - reduce overlapping
+
+pair_style soft 1.12246152962189
+pair_coeff * * 0.0 0.0  # No interaction except lamina beads
+pair_coeff 4 4 100.0 1.12246152962189
+variable prefactor equal ramp(0,100.0)
+fix push all adapt 1 pair soft a * * v_prefactor
+
+fix ind1 lamin indent 200.0 sphere 0.0 0.0 0.0 ${rLaminOut} side in units box
+fix ind2 lamin indent 200.0 sphere 0.0 0.0 0.0 ${rLaminIn} side out units box
+
+##################################################
+
+# Set Brownian dynamics
+
+fix 1 lamin nve # NVE ensemble
+fix 2 lamin langevin 1.0 1.0 1.0 PREP1_SEED # Brownian dynamics
+
+##################################################
+
+# Dumps/output
+
+thermo THERMO_PRINTFREQ
+thermo_style custom v_btime temp epair vol c_gyr
+dump 1 all custom PREP1_PRINTFREQ PREP1_OUTFILE id type x y z ix iy iz
+
+##################################################
+
+# Run
+
+reset_timestep 0
+
+run PREP1_TIME
+
+write_data PREP1_ENDFILE nocoeff
+
+##################################################
+
+# Unfix/undump
+
+unfix 1
+unfix 2
+unfix push
+unfix ind1
+unfix ind2
+undump 1
+region s1 delete
+region s2 delete
+region shell delete
+
+##################################################
+##################################################
+# PART 2 - Equilibrate with lamina
+##################################################
+##################################################
+
+# Add spherical indent
+
+fix ind1 lamin indent 200.0 sphere 0.0 0.0 0.0 ${rLaminOut} side in units box
+
+##################################################
+
+# Set Brownian dynamics
+
+fix 1 chromo nve
+fix 2 chromo langevin 1.0 1.0 1.0 PREP2_SEED
+
+##################################################
+
+# Dumps/output
+
+thermo THERMO_PRINTFREQ
+thermo_style custom v_btime temp epair vol c_gyr
+dump 1 all custom PREP2_PRINTFREQ PREP2_OUTFILE id type x y z ix iy iz
+
+##################################################
+
+# Potentials
+
+bond_style hybrid harmonic fene
+bond_coeff 1 fene 30.0 1.6 1.0 1.0
+bond_coeff 2 harmonic 1.0 1.0
+special_bonds fene
+
+angle_style cosine
+angle_coeff 1 3.0
+
+pair_style lj/cut 1.12246152962189
+pair_modify shift yes
+pair_coeff * * 1.0 1.0 1.12246152962189
+pair_coeff 4 4 0.0 0.0 # No interactions between lamina beads
+
+##################################################
+
+# Run
+
+reset_timestep 0
+
+run PREP2_TIME
+
+write_data PREP2_ENDFILE nocoeff
+
+##################################################
+
+# Unfix/undump
+
+undump 1
+unfix 1
+unfix 2
+
+##################################################
+##################################################
+# PART 3 - Main Simulation - Add in attractions
+##################################################
+##################################################
+
+# Set Brownian dynamics
+
+fix 1 chromo nve
+fix 2 chromo langevin 1.0 1.0 1.0 RUN_SEED
+
+##################################################
+
+# Dumps/output
+
+thermo THERMO_PRINTFREQ
+thermo_style custom v_btime temp epair vol c_gyr
+dump 1 all custom RUN_PRINTFREQ RUN_OUTFILE id type x y z ix iy iz
+
+##################################################
+
+# Potentials
+
+bond_style hybrid harmonic fene
+bond_coeff 1 fene 30.0 1.6 1.0 1.0
+bond_coeff 2 harmonic 1.0 1.0
+special_bonds fene
+
+angle_style cosine
+angle_coeff 1 3.0
+
+pair_style lj/cut 1.12246152962189
+pair_modify shift yes
+pair_coeff * * 1.0 1.0 1.12246152962189
+pair_coeff 4 4 0.0 0.0 # No interactions between lamina beads
+
+# Set the types of interactions HL and HH
+
+# Both LAD and HET beads attract with lamina
+if "EHETHET > 0.0" then &
+   "pair_coeff 2 2 EHETHET SIGMA CUTOFF"
+if "EHETLAM > 0.0" then &
+   "pair_coeff 2 4 EHETLAM SIGMA CUTOFF"
+if "ETETLAM > 0.0" then &
+   "pair_coeff 3 4 ETETLAM SIGMA CUTOFF"
+if "EEUEU > 0.0" then &
+   "pair_coeff 1 1 EEUEU SIGMA CUTOFF"
+
+##################################################
+
+# Run
+
+reset_timestep 0
+
+run RUN_TIME
+
+write_data RUN_ENDFILE nocoeff
+
+##################################################
+
+# Unfix/undump
+
+undump 1
+unfix 1
+unfix 2
+
+##################################################
