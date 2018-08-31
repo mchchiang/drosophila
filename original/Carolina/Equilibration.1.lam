@@ -1,0 +1,204 @@
+##DROSOPHILA GENOME --- TYPE RW
+######################################
+######################################
+
+##########################
+#    CONST PARAMETERS    #
+##########################
+variable Ared equal 6
+variable Ablack equal 3
+variable Hblack equal 3
+variable EUa equal 6
+variable EUb equal 3
+
+variable NH1 equal 5000
+variable NPH equal 2500
+variable NHP1 equal 2500
+variable NEU equal 1000
+variable density equal 0.16
+#
+variable Nprot equal ${NPH}+${NHP1}+${NEU}+${NH1}
+variable N equal 40120
+#
+variable parameters1 index R${Ared}B${Ablack}HB${Hblack}
+variable parameters2 index PHp${NPH}HP1p${NHP1}EUp${NEU}
+
+###############
+#    ULOOP    #
+###############
+#variable jbn uloop 1  # runs N simulations 
+#variable startfrom equal 0
+#variable jn equal ${startfrom}+${jbn}
+variable jbn equal 0
+variable jn equal 1    # Replica number
+variable seed equal (1975-${jn})*(1+${jbn})
+print ${jn}
+
+####################
+#    DEFINTIONS    #
+####################
+variable Type index RW
+variable SimType index ${Type}${jn}
+
+variable rname index LammpsInput.GENOME.Wild.N${N}${SimType}.${parameters2}
+variable simname index Run.GENOME.Wild.N${N}.${SimType}.${parameters2}.${parameters1}.rho${density}
+
+###  Box and Units (use LJ units and periodic boundaries)
+units lj
+atom_style angle #with stiffness
+boundary        p p p
+
+###  Neighbours list settings
+neighbor 1.8 bin
+neigh_modify every 2 delay 2 check yes 
+
+restart 1000000 ${simname}.Restart
+
+###  Read Data file
+read_data ${rname}
+
+reset_timestep 0
+
+######################
+#    Box Settings    #
+######################
+variable Lp equal (((${N}+${Nprot})/0.02)^(1./3.))*0.5+1
+variable Lm equal -${Lp}
+shell echo ${Lm}
+change_box all x final ${Lm} ${Lp} y final ${Lm} ${Lp} z final ${Lm} ${Lp} boundary  f f f units box
+
+### WALL
+fix WALL all wall/lj126 xhi EDGE 1.0 1.0 1.122462048 xlo EDGE 1.0 1.0 1.122462048 yhi EDGE 1.0 1.0 1.122462048 ylo EDGE 1.0 1.0 1.122462048 zhi EDGE 1.0 1.0 1.122462048 zlo EDGE 1.0 1.0 1.122462048 units box
+
+
+################
+#    GROUPS    #
+################
+group all type 1:20
+group polymer type < 16
+group protein type 16 17 18 19
+group tether type 20
+group mobile subtract all tether
+
+
+###############################
+#    Define Dump file name    #
+###############################
+###  VMD
+dump 4 all custom 100000 Pre.${simname}.lammpstrj id mol type x y z
+dump_modify  4   format "%d %d %d %.5f %.5f %.5f"  append yes
+
+
+######################
+#    Dedine FIXES    #
+######################
+fix 1 mobile   nve   
+fix 2 mobile   langevin   1.0 1.0   1.0   ${seed} 
+comm_style tiled
+fix bal all balance 100000 1.1 rcb
+comm_modify mode single cutoff 20.0
+
+###  THERMO AND INTEGRATION
+thermo 1000
+thermo_style   custom   step  temp  epair vol cpu
+
+timestep 0.01
+
+
+###########################
+#    Define POTENTIALS    #
+###########################
+
+###  ANGLE
+angle_style   cosine
+angle_coeff  1 1.0  #20 sigma for realistic DNA (1 bead = 2.5 nm)
+
+###  PAIRS--prerun
+pair_style soft 1.12246152962189
+pair_modify     shift yes
+pair_coeff      * * 1.0 1.12246152962189
+variable prefactor equal ramp(0,2)
+fix s1 all adapt 1 pair soft a * * v_prefactor
+
+###  HARMONIC
+bond_style   harmonic
+bond_coeff   1  1000.0 1.0
+bond_coeff   2  0.1 1.0
+
+
+#####################
+#    Set PRE-RUN    #
+#####################
+run 50000
+
+bond_coeff   2  1.0 1.0
+comm_modify mode single cutoff 10.0
+angle_coeff  1 2.0
+run 50000
+
+unfix s1
+bond_coeff   2  10.0 1.0
+pair_coeff      * * 10.0 1.12246152962189
+comm_modify mode single
+angle_coeff  1 3.0 
+run 500000
+
+
+write_data Equilibrated.GENOME.${jn}.data nocoeff
+
+
+
+#################################
+#    Change to Spherical Box    #
+#################################
+variable Dt equal 2000
+variable nloops equal 2000000/${Dt} 
+variable inc loop ${nloops}
+
+label start_boxloop
+
+### radius of spherical "box"
+variable ri equal sqrt(3)*${Lp} 
+variable rf equal ((${N}+${Nprot})/(${density}*2*asin(1)*4./3.))^(1./3.)
+variable rr equal ${ri}+(${inc}-1)*(${rf}-${ri})/${nloops}
+shell echo ${rr} >> radius.${jn}.dat
+
+fix sphbox all indent 200.0 sphere 0 0 0 ${rr} side in units box
+
+run ${Dt}
+
+unfix sphbox
+
+next inc
+jump SELF start_boxloop
+
+### Equilibrate at final sphere radius
+fix sphbox all indent 200.0 sphere 0 0 0 ${rf} side in units box
+run 2000000
+
+undump 4
+
+write_data Equilibrated.GENOME.${jn}.data nocoeff
+
+
+################
+## ULOOP    ####
+################
+clear
+variable SimType delete
+variable rname delete
+variable simname delete
+variable seed delete
+variable jn delete
+
+#next jbn
+#jump SELF #last line!!!
+
+### If e.g. I run this on 10 partitions of 1 processor,
+### and initialise the variable with 'uloop N'
+### it will run 10 simulations with 'jobnumber' taking 
+### values 1-10. Then when a particular simulation finishes, the 
+### script will be run again with the next value of jobnumber, 
+### until N simulations have been run.
+
+## SO ULOOP IS "SERIAL" BUT FOR SURE 10x1 PROCs ARE ALWAYS BUSY

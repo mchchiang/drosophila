@@ -1,0 +1,467 @@
+##DROSOPHILA FULL MODEL --- TYPE RW
+######################################
+######################################
+
+##########################
+#    CONST PARAMETERS    #
+##########################
+variable Ared equal 6
+variable Ablack equal 3
+variable Hblack equal 3
+variable EUa equal 6
+variable EUb equal 3
+#
+variable NH1 equal 5000
+variable NPH equal 2500
+variable NHP1 equal 2500
+variable NEU equal 1000
+variable density equal 0.08*1.91
+variable volfrac equal 0.08
+#
+variable Nprot equal ${NPH}+${NHP1}+${NEU}+${NH1}
+variable N equal 40120
+#
+variable parameters1 index R${Ared}B${Ablack}HB${Hblack}
+variable parameters2 index PHp${NPH}HP1p${NHP1}EUp${NEU}
+
+###############
+#    ULOOP    #
+###############
+#variable jbn uloop 1  # runs N simulations 
+#variable startfrom equal 0
+#variable jn equal ${startfrom}+${jbn}
+variable jbn equal 0
+variable jn equal 1   # Replica number
+variable seed equal (208-${jn})*(1+${jbn})
+print ${jn}
+
+####################
+#    DEFINTIONS    #
+####################
+variable Type index M
+variable SimType index ${Type}${jn}
+variable fname index ${SimType}.${parameters2}.${parameters1}.Vfrac${volfrac}
+
+variable rname index Equilibrated.GENOME.${jn}.data
+variable simname index GENOME.N${N}.${SimType}.${parameters2}.${parameters1}.Vfrac${volfrac}
+
+####################
+#    Initialize    #
+####################
+
+###  Box and Units (use LJ units and periodic boundaries)
+units lj
+atom_style angle #with stiffness
+boundary        p p p
+
+###  Neighbours list settings
+neighbor 1.8 bin
+neigh_modify every 2 delay 2 check yes 
+
+restart 2500000 Restart.${simname}.*
+
+###  Read Input file
+read_data ${rname}
+
+reset_timestep 0
+
+######################
+#    Box Settings    #
+######################
+variable rr equal ((${N}+${Nprot})/(${density}*2*asin(1)*4./3.))^(1./3.)
+variable Lp equal ${rr}+1     # sim box slightly bigger than spherical region
+variable Lm equal -${Lp}
+shell echo ${Lm}
+change_box all x final ${Lm} ${Lp} y final ${Lm} ${Lp} z final ${Lm} ${Lp} boundary  f f f units box
+
+### Simulation box Wall
+fix WALL all wall/lj126 xhi EDGE 1.0 1.0 1.122462048 xlo EDGE 1.0 1.0 1.122462048 yhi EDGE 1.0 1.0 1.122462048 ylo EDGE 1.0 1.0 1.122462048 zhi EDGE 1.0 1.0 1.122462048 zlo EDGE 1.0 1.0 1.122462048 units box
+
+### Define nucleus Region
+region sphnuc sphere 0 0 0 ${rr} side in units box
+
+
+################
+#    GROUPS    #
+################
+group all type 1:20
+group polymer type < 16
+group blackchr type 13 14 15
+group NoBlkchr subtract all blackchr
+group protein type 16 17 18 19
+group tether type 20
+group mobile subtract all tether
+
+
+###################
+#    Make DIRS    #
+###################
+shell mkdir ${fname}
+
+
+######################
+#    Dedine FIXES    #
+######################
+fix 1 mobile   nve   
+fix 2 mobile   langevin   1.0 1.0   1.0   ${seed} 
+comm_style tiled
+fix bal all balance 50000 1.1 rcb
+
+fix sphbox all indent 200.0 sphere 0 0 0 ${rr} side in units box         # Spherical box
+
+###  THERMO AND INTEGRATION
+thermo 10000
+thermo_style   custom   step  temp  epair vol cpu
+
+timestep 0.01
+
+
+###########################
+#    Define POTENTIALS    #
+###########################
+
+###  ANGLE
+angle_style   cosine
+angle_coeff  1 3.0  #20 sigma for realistic DNA (1 bead = 2.5 nm)
+
+###  HARMONIC
+bond_style hybrid  harmonic fene
+special_bonds fene#<=== I M P O R T A N T (new command)
+bond_coeff   1 fene 30.0  1.6  1.0  1.0
+bond_coeff   2 harmonic 10.0 1.0
+
+###  PAIRS--prerun
+pair_style soft 1.2246
+pair_modify     shift yes
+pair_coeff      * * 20.0 1.12246152962189
+#variable prefactor equal ramp(0,200)
+#fix s1 all adapt 1 pair soft a * * v_prefactor
+
+
+#####################
+#    Set PRE-RUN    #
+#####################
+##VMD
+dump 4 all custom 10000 PreLJ.${simname}.lammpstrj id mol type x y z
+dump_modify  4   format "%d %d %d %.5f %.5f %.5f"
+
+reset_timestep 0
+
+run 10000
+
+unfix sphbox
+
+### Confine particles even further to avoid "particles outside region" when defining the interaction with the lamina
+variable Dt equal 2000
+variable nloops equal 100000/${Dt} 
+variable inc loop ${nloops}
+
+label start_boxloop
+
+### radius of spherical "box"
+variable ri equal ${Lp} 
+variable rf equal ${rr}-2
+variable rrChr equal ${ri}+(${inc}-1)*(${rf}-${ri})/${nloops}
+
+fix sphbox all indent 200.0 sphere 0 0 0 ${rrChr} side in units box
+
+run ${Dt}
+
+unfix sphbox
+
+next inc
+jump SELF start_boxloop
+
+### Equilibrate at final sphere radius
+fix sphbox all indent 200.0 sphere 0 0 0 ${rf} side in units box
+run 1000000
+unfix sphbox
+
+undump 4
+
+
+#####################################
+#    Interaction with the LAMINA    #
+#####################################
+fix sphbox NoBlkchr indent 200.0 sphere 0 0 0 ${rr} side in units box         # Spherical box
+fix sphlam blackchr wall/region sphnuc lj126  2.0  1.0  1.8        # Spherical Lamina
+
+
+#######################
+#    SET PAIRS--OK    #
+#######################
+variable Asoft equal 20 
+pair_style  hybrid lj/cut 1.8 soft 1.12246152962189
+pair_modify     shift yes
+
+#if not specified -- soft
+pair_coeff * * soft ${Asoft} 1.12246152962189
+
+variable Asoft equal 50
+
+## 1 -- normal
+
+pair_coeff      1 * soft ${Asoft} 1.12246152962189
+pair_coeff      1 16 lj/cut 1.0 1.0 1.12246152962189 #-- polymer-protein
+pair_coeff      1 17 lj/cut 1.0 1.0 1.12246152962189 #-- polymer-protein
+pair_coeff      1 18 lj/cut 1.0 1.0 1.12246152962189 #-- polymer-protein
+pair_coeff      1 19 lj/cut 1.0 1.0 1.12246152962189 #-- polymer-protein
+
+## 2 -- PC strong
+
+pair_coeff      2 * soft ${Asoft} 1.12246152962189
+pair_coeff      2 16 lj/cut ${Ared} 1.0 1.8          #-- PCg-PCprotein--strong
+pair_coeff      2 17 lj/cut 1.0 1.0 1.12246152962189 #-- PCg-protein
+pair_coeff      2 18 lj/cut 1.0 1.0 1.12246152962189 #-- PCg-protein
+pair_coeff      2 19 lj/cut 1.0 1.0 1.12246152962189 #-- PCg-protein
+
+## 3 -- PC weak
+
+pair_coeff      3 * soft ${Asoft} 1.12246152962189
+pair_coeff      3 16 lj/cut ${Ablack} 1.0 1.8        #-- PCg-PCprotein--weak
+pair_coeff      3 17 lj/cut 1.0 1.0 1.12246152962189 #-- PCg-protein
+pair_coeff      3 18 lj/cut 1.0 1.0 1.12246152962189 #-- PCg-protein
+pair_coeff      3 19 lj/cut 1.0 1.0 1.12246152962189 #-- PCg-protein
+
+## 4 -- Blue Heterochrom
+
+pair_coeff      4 * soft ${Asoft} 1.12246152962189
+pair_coeff      4 16 lj/cut 1.0 1.0 1.12246152962189 #--Heterocrom--PCp
+pair_coeff      4 17 lj/cut 1.0 1.0 1.12246152962189 #--Heterocrom--H1
+pair_coeff      4 18 lj/cut 1.0 1.0 1.12246152962189 #--Heterocrom-EU
+pair_coeff      4 19 lj/cut ${Hblack} 1.0 1.8        #--Heterocrom-HP1
+
+
+## 5 -- PCstrong + Blue Heterochrom
+
+pair_coeff      5 * soft ${Asoft} 1.12246152962189
+pair_coeff      5 16 lj/cut ${Ared} 1.0 1.8          #--PCg-strong--PCp
+pair_coeff      5 17 lj/cut 1.0 1.0 1.12246152962189 #--Heterocrom--H1
+pair_coeff      5 18 lj/cut 1.0 1.0 1.12246152962189 #--Heterocrom-EU
+pair_coeff      5 19 lj/cut ${Hblack} 1.0 1.8        #--Heterocrom-HP1
+
+## 6 -- PCweak + Blue Heterochrom
+
+pair_coeff      6 * soft ${Asoft} 1.12246152962189
+pair_coeff      6 16 lj/cut ${Ablack} 1.0 1.8        #--PCg-weak--PCp
+pair_coeff      6 17 lj/cut 1.0 1.0 1.12246152962189 #--Heterocrom--H1
+pair_coeff      6 18 lj/cut 1.0 1.0 1.12246152962189 #--Heterocrom-EU
+pair_coeff      6 19 lj/cut ${Hblack} 1.0 1.8        #--Heterocrom-HP1
+
+## 7 -- EuChrom Starter Site (SS)
+
+pair_coeff      7 * soft ${Asoft} 1.12246152962189
+pair_coeff      7 16 lj/cut 1.0 1.0 1.12246152962189 #--Euchr--PCp
+pair_coeff      7 17 lj/cut 1.0 1.0 1.12246152962189 #--Euchr--H1
+pair_coeff      7 18 lj/cut ${EUa} 1.0 1.8           #--Euchrom-EU-strong
+pair_coeff      7 19 lj/cut 1.0 1.0 1.12246152962189 #--Euchr-HP1
+
+
+## 8 -- PCstrong + EuChrom SS
+
+pair_coeff      8 * soft ${Asoft} 1.12246152962189
+pair_coeff      8 16 lj/cut ${Ared} 1.0 1.8          #--PCg--PCp-strong
+pair_coeff      8 17 lj/cut 1.0 1.0 1.12246152962189 #--Euchr--H1
+pair_coeff      8 18 lj/cut ${EUa} 1.0 1.8           #--Euchrom-EU-strong
+pair_coeff      8 19 lj/cut 1.0 1.0 1.12246152962189 #--Euchr-HP1
+
+## 9 -- PC weak + EuChrom SS
+
+pair_coeff      9 * soft ${Asoft} 1.12246152962189
+pair_coeff      9 16 lj/cut ${Ablack} 1.0 1.8        #--PCg--PCp-weak
+pair_coeff      9 17 lj/cut 1.0 1.0 1.12246152962189 #--Euchr--H1
+pair_coeff      9 18 lj/cut ${EUa} 1.0 1.8           #--Euchrom-EU-strong
+pair_coeff      9 19 lj/cut 1.0 1.0 1.12246152962189 #--Euchr-HP1
+
+## 10 -- EuChrom Elongational
+
+pair_coeff      10 * soft ${Asoft} 1.12246152962189
+pair_coeff      10 16 lj/cut 1.0 1.0 1.12246152962189 #--Euchr--PCp
+pair_coeff      10 17 lj/cut 1.0 1.0 1.12246152962189 #--Euchr--H1
+pair_coeff      10 18 lj/cut ${EUb} 1.0 1.8           #--Euchrom-EU-weak
+pair_coeff      10 19 lj/cut 1.0 1.0 1.12246152962189 #--Euchr-HP1
+
+## 11 -- PC strong + EuChrom Elongational
+
+pair_coeff      11 * soft ${Asoft} 1.12246152962189
+pair_coeff      11 16 lj/cut ${Ared} 1.0 1.8          #--PCg--PCp-strong
+pair_coeff      11 17 lj/cut 1.0 1.0 1.12246152962189 #--Euchr--H1
+pair_coeff      11 18 lj/cut ${EUb} 1.0 1.8           #--Euchrom-EU-weak
+pair_coeff      11 19 lj/cut 1.0 1.0 1.12246152962189 #--Euchr-HP1
+
+## 12 -- PC weak + EuChrom Elongational
+
+pair_coeff      12 * soft ${Asoft} 1.12246152962189
+pair_coeff      12 16 lj/cut ${Ablack} 1.0 1.8        #--PCg--PCp-weak
+pair_coeff      12 17 lj/cut 1.0 1.0 1.12246152962189 #--Euchr--H1
+pair_coeff      12 18 lj/cut ${EUb} 1.0 1.8           #--Euchrom-EU-weak
+pair_coeff      12 19 lj/cut 1.0 1.0 1.12246152962189 #--Euchr-HP1
+
+## 13 -- Desert (mediated by H1)
+
+pair_coeff      13 * soft ${Asoft} 1.12246152962189
+pair_coeff      13 16 lj/cut 1.0 1.0 1.12246152962189 #--polymer-protein
+pair_coeff      13 17 lj/cut 1.0 1.0 1.12246152962189 #--polymer-protein
+pair_coeff      13 18 lj/cut 1.0 1.0 1.12246152962189 #--polymer-protein
+pair_coeff      13 19 lj/cut 1.0 1.0 1.12246152962189 #--polymer-protein
+
+## 14 -- Desert + PCstrong
+
+pair_coeff      14 * soft ${Asoft} 1.12246152962189
+pair_coeff      14 16 lj/cut ${Ared} 1.0 1.8          #--PCg--PCp-strong
+pair_coeff      14 17 lj/cut 1.0 1.0 1.12246152962189 #--polymer-protein
+pair_coeff      14 18 lj/cut 1.0 1.0 1.12246152962189 #--polymer-protein
+pair_coeff      14 19 lj/cut 1.0 1.0 1.12246152962189 #--polymer-protein
+
+## 15 -- Desert + PCweak
+
+pair_coeff      15 * soft ${Asoft} 1.12246152962189   
+pair_coeff      15 16 lj/cut ${Ablack} 1.0 1.8        #--PCg--PCp-weak
+pair_coeff      15 17 lj/cut 1.0 1.0 1.12246152962189 #--polymer-protein
+pair_coeff      15 18 lj/cut 1.0 1.0 1.12246152962189 #--polymer-protein
+pair_coeff      15 19 lj/cut 1.0 1.0 1.12246152962189 #--polymer-protein
+
+## 16 -- PC protein
+
+pair_coeff      16 16 lj/cut 1.0 1.0 1.12246152962189
+pair_coeff      16 17 lj/cut 1.0 1.0 1.12246152962189
+pair_coeff      16 18 lj/cut 1.0 1.0 1.12246152962189
+pair_coeff      16 19 lj/cut 1.0 1.0 1.12246152962189
+
+## 17 -- H1
+
+pair_coeff      17 17 lj/cut 1.0 1.0 1.12246152962189
+pair_coeff      17 18 lj/cut 1.0 1.0 1.12246152962189
+pair_coeff      17 19 lj/cut 1.0 1.0 1.12246152962189
+
+## 18 -- Euchromatin protein
+
+pair_coeff      18 18 lj/cut 1.0 1.0 1.12246152962189
+pair_coeff      18 19 lj/cut 1.0 1.0 1.12246152962189
+
+## 19 -- HP1
+pair_coeff      19 19 lj/cut 1.0 1.0 1.12246152962189
+
+## 20 --tether, just one non mobile bead
+
+
+###############################
+#    Define Dump file name    #
+###############################
+##VMD
+dump 1 all custom 20 ${simname}.lammpstrj.0-2e3 id mol type x y z
+dump_modify 1   format "%d %d %d %.5f %.5f %.5f" append yes
+##DAT
+dump 2 all custom 20 ${fname}/${simname}.* id type x y z ix iy iz
+dump_modify 2   format "%d %d %.5f %.5f %.5f %d %d %d" 
+
+
+####################
+#    COMPUTE PE    #
+####################
+#compute peratomPE all pe/atom pair 
+#compute PolymerPE polymer reduce sum c_peratomPE 
+#variable PolymerPE equal pe 
+#Nevery, Nrepeat and Nfreq
+compute 1 all pe pair
+fix AvePE all ave/time 20 1 20 c_1 file Energy1_${Type}${jn}_${parameters2}.${parameters1}.dat ave one 
+
+
+#############
+#    RUN    #
+#############
+thermo 100
+thermo_style   custom   step  temp  epair vol cpu
+
+reset_timestep 0 
+
+run 2000
+
+
+###################    Change Time Step    ##################
+
+undump 1
+undump 2
+uncompute 1
+unfix AvePE
+
+
+########################
+#    Redefine DUMPS    #
+########################
+##VMD
+dump 1 all custom 2000 ${simname}.lammpstrj.2e3-2e6 id mol type x y z
+dump_modify 1   format "%d %d %d %.5f %.5f %.5f" append yes
+##DAT
+dump 2 all custom 2000 ${fname}/${simname}.* id type x y z ix iy iz
+dump_modify 2   format "%d %d %.5f %.5f %.5f %d %d %d"
+
+
+########################
+#    Redefine FIXES    #
+########################
+compute 1 all pe pair
+fix AvePE all ave/time 2000 1 2000 c_1 file Energy2_${Type}${jn}_${parameters2}.${parameters1}.dat ave one
+
+
+###  THERMO AND INTEGRATION
+thermo 100000
+thermo_style   custom   step  temp  epair vol cpu
+
+run 1998000
+
+
+###################    Change Time Step    ##################
+
+undump 1
+undump 2
+uncompute 1
+unfix AvePE
+
+
+########################
+#    Redefine DUMPS    #
+########################
+##VMD
+dump 1 all custom 100000 ${simname}.lammpstrj.2e6-2e8 id mol type x y z
+dump_modify 1   format "%d %d %d %.5f %.5f %.5f" append yes
+##DAT
+dump 2 all custom 100000 ${fname}/${simname}.* id type x y z
+dump_modify 2   format "%d %d %.5f %.5f %.5f" 
+
+
+########################
+#    Redefine FIXES    #
+########################
+compute 1 all pe pair
+fix AvePE all ave/time 100000 1 100000 c_1 file Energy3_${Type}${jn}_${parameters2}.${parameters1}.dat ave one 
+
+
+###  THERMO AND INTEGRATION
+thermo 100000
+thermo_style   custom   step  temp  epair vol cpu
+
+run 198000000
+
+
+###############
+#    ULOOP    #
+###############
+clear
+variable SimType delete
+variable rname delete
+variable simname delete
+variable seed delete
+variable jn delete
+
+#next jbn
+#jump SELF #last line!!!
+
+### If e.g. I run this on 10 partitions of 1 processor,
+### and initialise the variable with 'uloop N'
+### it will run 10 simulations with 'jobnumber' taking 
+### values 1-10. Then when a particular simulation finishes, the 
+### script will be run again with the next value of jobnumber, 
+### until N simulations have been run.
+
+## SO ULOOP IS "SERIAL" BUT FOR SURE 10x1 PROCs ARE ALWAYS BUSY
