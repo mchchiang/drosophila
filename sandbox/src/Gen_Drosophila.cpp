@@ -29,6 +29,9 @@ using std::make_shared;
 
 double getBoxLength(int numOfBeads, double density);
 int getBeadType(vector<double>& fracOfStates);
+void shapePolymer(shared_ptr<Polymer> polymer, double maxRadius, 
+		  double x0, double y0, double z0);
+double distance(double x, double y, double z);
 
 int main(int argc, char * argv[]){
   if (argc != 8){
@@ -174,77 +177,36 @@ int main(int argc, char * argv[]){
   shared_ptr<LAMMPS> lammps = make_shared<LAMMPS>(L, L, L);
   shared_ptr<Polymer> polymer {};
   shared_ptr<Bead> bead {};
+
   
   lammps->setTypesOfBeads(3);
   lammps->setTypesOfBonds(2);
   lammps->setTypesOfAngles(1);
   
-  // Make each chromosome arm in a smaller box first
-  double lxmin {lx/2.0};
-  double lymin {ly/2.0};
-  double lzmin {lz/2.0};
-  vector<double> cm; // Store the centre of mass of a polymer
+  double radius {0.15*lx};
+  vector<double> xshift {-0.2,-0.3,0.3,0.2,0.0,0.0};
+  vector<double> yshift {-0.3,0.0,0.0,-0.3,0.0,0.3};
+  vector<double> zshift {0.0,0.0,0.0,0.0,-0.3,0.0};
 
-  /*
-   * Strategy to place the chromosome arms:
-   * Divide simulation box into eight compartments (each of same size)
-   * Randomly place the chromosome arms in these compartments 
-   */
-  const int numOfBoxes {8};
-  const double xs {lx/4.0}, ys {ly/4.0}, zs {lz/4.0};
-  vector<double> xshift {-xs,xs,xs,-xs,-xs,xs,xs,-xs};
-  vector<double> yshift {-ys,-ys,ys,ys,-ys,-ys,ys,ys};
-  vector<double> zshift {-zs,-zs,-zs,-zs,zs,zs,zs,zs};
-
-  std::random_device rd;
-  std::mt19937 mt(rd());
-
-  // Create a list of the indices of chromosomes to be picked (i.e. 0,1,...,N)
-  vector<int> chromoToPick (numOfFibres);
-  std::iota(chromoToPick.begin(), chromoToPick.end(), 0);
-  
-  // Create a list of the indices of boxes to be picked (i.e 0,1,...,8)
-  vector<int> boxToPick (numOfBoxes);
-  std::iota(boxToPick.begin(), boxToPick.end(), 0);
-
-  int chr, chrIndex, box, boxIndex;
-  while (chromoToPick.size() > 0){
-    std::uniform_int_distribution<int> pickChromo(0,chromoToPick.size()-1);
-    chrIndex = pickChromo(mt);
-    chr = chromoToPick[chrIndex];
-    cout << "Generating chromosome " << chrNumToName[chr] << endl;
-    polymer = lammps->createRandomWalkPolymer(chr, fibreLength[chr], 1, 1, 1, 
-					      0.0, 0.0, 0.0, 
-					      lxmin, lymin, lzmin);
-
-    // Pick compartment
-    std::uniform_int_distribution<int> pickBox(0,boxToPick.size()-1);
-    boxIndex = pickBox(mt);
-    box = boxToPick[boxIndex];
-    
-    // Shift the polymer to a particular place
-    cm = polymer->getCentreOfMass(lxmin,lymin,lzmin);
-    vector<double> shift {xshift[box]-cm[0], yshift[box]-cm[1], 
-	zshift[box]-cm[2]};
-
-    for (int i {}; i < fibreLength[chr]; i++){
-      bead = polymer->getBead(i);
-      for (int j {}; j < 3; j++){
-	bead->setPosition(j, bead->getPosition(j)+shift[j]);
-      }
-      bead->setLabel(chr);
-      bead->setType(getBeadType((*fracOfStates)[chr][i]));
+  for (int i {}; i < numOfFibres; i++){
+    cout << "Generating " << chrNumToName[i] << endl;
+    polymer = lammps->createPolymer(i,fibreLength[i]);
+    shapePolymer(polymer,radius,xshift[i]*lx,
+		 yshift[i]*ly,zshift[i]*lz);
+    for (int j {}; j < fibreLength[i]; j++){
+      bead = polymer->getBead(j);
+      bead->setLabel(i);
+      bead->setType(getBeadType((*fracOfStates)[i][j]));
     }
-    cout << "Done generating " << chrNumToName[chr] << endl;
-    chromoToPick.erase(chromoToPick.begin()+chrIndex);
-    boxToPick.erase(boxToPick.begin()+boxIndex);
+    cout << "Done generating " << chrNumToName[i] << endl;
   }
   
+  
   // Add a tethering bead to create a Rabl-like configuration
-  shared_ptr<Bead> tether = lammps->createBead(numOfFibres+1);
+  shared_ptr<Bead> tether = lammps->createBead(numOfFibres);
   
   // Set the tethering bead to locate at the bottom of the box
-  tether->setPosition(2,-zs);
+  tether->setPosition(2,-0.45*lz);
   tether->setLabel(numOfFibres+1);
   tether->setType(3);
 
@@ -300,4 +262,81 @@ int getBeadType(vector<double>& fracOfStates){
   } else {
     return 1;
   }
+}
+
+
+void shapePolymer(shared_ptr<Polymer> polymer, double maxRadius, 
+		     double x0, double y0, double z0){
+  std::random_device rd;
+  std::mt19937 mt(rd());
+  std::uniform_real_distribution<double> randDouble(0.0,1.0);
+  
+  bool ok {true};
+  const double pi {M_PI};
+  double x, y, z;
+  double r, costheta, sintheta, phi;
+  shared_ptr<Bead> bead, previous, b;
+  double minSep {0.5}; // Minimum separation between any beads
+  double sep {0.8}; // Separation between consecutive beads
+
+  int nBeads {polymer->getNumOfBeads()};
+
+  // The first bead is at the origin
+  previous = polymer->getBead(0);
+  previous->setPosition(0, 0.0);
+  previous->setPosition(1, 0.0);
+  previous->setPosition(2, 0.0);
+
+  for (int i {1}; i < nBeads; i++){
+    bead = polymer->getBead(i);
+    do {
+      ok = true;
+      r = randDouble(mt);
+      costheta = 1.0-2.0*r;
+      sintheta = sqrt(1.0-costheta*costheta);
+      r = randDouble(mt);
+      phi = 2.0*pi*r;
+      x = previous->getPosition(0) + sep * sintheta * cos(phi);
+      y = previous->getPosition(1) + sep *sintheta * sin(phi);
+      z = previous->getPosition(2) + sep * costheta;
+      
+      // Check if the bead's position exceeds the boundary
+      if (distance(x,y,z) >= maxRadius){
+	ok = false;
+	continue;
+      }
+
+      // Check if the bead overlaps with previous beads
+      for (int j {}; j < i; j++){
+	b = polymer->getBead(j);
+	if (distance(x-b->getPosition(0),y-b->getPosition(1),
+		     z-b->getPosition(2)) < minSep){
+	  ok = false;
+	  continue;
+	}
+      }
+    } while (!ok);
+    
+    bead->setPosition(0,x);
+    bead->setPosition(1,y);
+    bead->setPosition(2,z);
+    
+    previous = bead;
+  }
+
+  // Get polymer's centre of mass 
+  vector<double> cm {polymer->getCentreOfMass(0,0,0)};
+
+  // Shift the beads such that the centre of mass of
+  // the polymer is at (x0,y0,z0)
+  for (int i {}; i < nBeads; i++){
+    bead = polymer->getBead(i);
+    bead->setPosition(0, bead->getPosition(0)-cm[0]+x0);
+    bead->setPosition(1, bead->getPosition(1)-cm[1]+y0);
+    bead->setPosition(2, bead->getPosition(2)-cm[2]+z0);
+  }
+}
+
+double distance(double x, double y, double z){
+  return sqrt(x*x+y*y+z*z);
 }
